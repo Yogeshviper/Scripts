@@ -1,0 +1,49 @@
+$snapshotSubscriptionId= "f0eef675-d0a9-47e4-9b62-0f5fb0f9f626"
+$vmSubscriptionId= "f0eef675-d0a9-47e4-9b62-0f5fb0f9f626"
+$vmOSType= "Windows"
+$resourceGroupName='Golang-CI-Mar-02-RG'
+$snapshotRgName='Golang-CI-Mar-02-RG'
+$snapshotName= 'MMC-VM-01-Snap'
+$diskSize= '128'
+$storageType= 'Standard_LRS'
+$location= 'Central India'
+$virtualNetworkName="Golang-CI-Mar-vnet-02"
+$NewvirtualMachineSize="Standard_D4s_v3"
+$vmSubnetName= "default"
+$nsgName= "Golang-CI-Mar-nsg-02"
+$vmNames=@(
+      "MMCVM02"
+             )
+ForEach ($vmName in $vmNames) {
+ 
+$name = $vmName
+ 
+ 
+Set-AzContext -Subscription $snapshotSubscriptionId
+$snapshot = Get-AzSnapshot -ResourceGroupName $snapshotRgName -SnapshotName $snapshotName
+ 
+Set-AzContext -Subscription $vmSubscriptionId
+$diskConfig = New-AzDiskConfig -SkuName $storageType -Location $location -CreateOption Copy -SourceResourceId $snapshot.Id -DiskSizeGB $diskSize -OsType $vmOSType
+$newOSDisk = New-AzDisk -Disk $diskConfig -ResourceGroupName $resourceGroupName -DiskName $name
+ 
+#############################################################################################################
+ 
+ 
+$VNet = Get-AzVirtualNetwork -Name $virtualNetworkName -ResourceGroupName $ResourceGroupName
+$NIC = New-AzNetworkInterface -Name ($name.ToLower()+"_NIC") -ResourceGroupName $ResourceGroupName -Location $Location -SubnetId $VNet.Subnets[0].Id  -NetworkSecurityGroupId "/subscriptions/28abd70f-6022-47fa-b973-9878bdef9ab9/resourceGroups/MMC-RG-1/providers/Microsoft.Network/networkSecurityGroups/MMC-VM-01-nsg"
+$VirtualMachine = New-AzVMConfig -VMName $name -VMSize $NewvirtualMachineSize
+$VirtualMachine = Set-AzVMOSDisk -VM $VirtualMachine -ManagedDiskId $newOSDisk.Id -CreateOption Attach -Windows
+$VirtualMachine = Add-AzureRmVMNetworkInterface -VM $VirtualMachine -Id $NIC.Id
+$VirtualMachine = Set-AzureRmVMBootDiagnostics -VM $VirtualMachine -Disable
+New-AzureRmVM -VM $VirtualMachine -ResourceGroupName $ResourceGroupName -Location $Location
+ 
+New-AzPublicIpAddress -Name ($name.ToLower()+"_PIP") -ResourceGroupName $resourceGroupName -AllocationMethod Static -Location $location
+ 
+$vnet = Get-AzVirtualNetwork -Name $virtualNetworkName -ResourceGroupName $resourceGroupName
+$subnet = Get-AzVirtualNetworkSubnetConfig -Name $vmSubnetName -VirtualNetwork $vnet
+$nic = Get-AzNetworkInterface -Name ($name.ToLower()+"_NIC") -ResourceGroupName $resourceGroupName
+$pip = Get-AzPublicIpAddress -Name ($name.ToLower()+"_PIP") -ResourceGroupName $resourceGroupName
+$nic | Set-AzNetworkInterfaceIpConfig -Name ipconfig1 -PublicIPAddress $pip -Subnet $subnet
+$nic | Set-AzNetworkInterface
+ 
+}
